@@ -1,0 +1,42 @@
+# Translation file
+
+#
+# Generic
+#
+
+# Module label 'ModuleStockProprietaireName'
+ModuleStockProprietaireName = StockProprietaire
+# Module description 'ModuleStockProprietaireDesc'
+ModuleStockProprietaireDesc = StockProprietaire description
+
+#
+# Admin page
+#
+StockProprietaireSetup = StockProprietaire setup
+Settings = Settings
+StockProprietaireSetupPage = StockProprietaire setup page
+NewSection=New section
+STOCKPROPRIETAIRE_MYPARAM1 = My param 1
+STOCKPROPRIETAIRE_MYPARAM1Tooltip = My param 1 tooltip
+STOCKPROPRIETAIRE_MYPARAM2=My param 2
+STOCKPROPRIETAIRE_MYPARAM2Tooltip=My param 2 tooltip
+
+
+#
+# About page
+#
+About = About
+StockProprietaireAbout = About StockProprietaire
+StockProprietaireAboutPage = StockProprietaire about page
+
+#
+# Sample page
+#
+StockProprietaireArea = Home StockProprietaire
+MyPageName = My page name
+
+#
+# Sample widget
+#
+MyWidget = My widget
+MyWidgetDescription = My widget description
