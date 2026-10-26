@@ -1,0 +1,21 @@
+CREATE TABLE llx_payroll_payrun (
+    rowid integer AUTO_INCREMENT PRIMARY KEY,
+    ref varchar(128) NOT NULL,
+    label varchar(255),
+    period_month integer NOT NULL,
+    period_year integer NOT NULL,
+    status integer DEFAULT 0 NOT NULL,
+    total_gross double(24,8),
+    total_advances double(24,8),
+    total_deductions double(24,8),
+    total_bonuses double(24,8),
+    total_net double(24,8),
+    note_public text,
+    note_private text,
+    date_creation datetime,
+    tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    fk_user_creat integer,
+    fk_user_modif integer,
+    import_key varchar(14),
+    entity integer DEFAULT 1
+) ENGINE=innodb;

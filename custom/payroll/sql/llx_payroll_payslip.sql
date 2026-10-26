@@ -1,0 +1,21 @@
+CREATE TABLE llx_payroll_payslip (
+    rowid integer AUTO_INCREMENT PRIMARY KEY,
+    ref varchar(128) NOT NULL,
+    fk_payrun integer NOT NULL,
+    fk_user integer NOT NULL,
+    base_salary double(24,8) NOT NULL,
+    advances double(24,8) DEFAULT 0,
+    bonuses double(24,8) DEFAULT 0,
+    net_salary double(24,8) DEFAULT 0,
+    fk_account integer,
+    fk_mode_reglement integer,
+    date_payment datetime,
+    status integer DEFAULT 0 NOT NULL,
+    note_public text,
+    note_private text,
+    date_creation datetime,
+    tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    fk_user_creat integer,
+    fk_user_modif integer,
+    entity integer DEFAULT 1
+) ENGINE=innodb;

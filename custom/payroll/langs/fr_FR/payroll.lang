@@ -1,0 +1,230 @@
+# ============================================================================
+# langs/fr_FR/payroll.lang - Traductions françaises
+# ============================================================================
+
+CHARSET=UTF-8
+
+# Module
+Module900000Name=Paie
+Module900000Desc=Gestion de la paie mensuelle
+
+# Permissions
+Permission900001=Lire les périodes de paie
+Permission900002=Créer/modifier les périodes de paie
+Permission900003=Valider les périodes de paie
+Permission900004=Supprimer les périodes de paie
+Permission900005=Lire les fiches de paie d'un employé 
+Permission900006=modifier/supprimer/valider/payer un seul employé 
+Permission900007=Lire uniquement ses propres fiches de paie
+Permission900008=Générer les écritures comptables
+Permission900009=Enregistrer les paiements
+
+Read pay runs=Lire les périodes de paie
+Create/modify pay runs=Créer/modifier les périodes de paie
+Validate pay runs=Valider les périodes de paie
+Delete pay runs=Supprimer les périodes de paie
+Read payslips=Lire les fiches de paie d'un employé 
+Create/modify payslips=modifier/supprimer/valider/payer un seul employé 
+Read own payslip only=Lire uniquement ses propres fiches de paie
+Generate accounting entries=Générer les écritures comptables
+Record payments=Enregistrer les paiements
+
+# Menu
+Payroll=Paie
+PayRuns=Liste des paies mensuelles
+Advances=Avances
+ListOfAdvances=Liste des avances
+NewPayRun=Nouvelle paie mensuelle
+PayrollSummary=État global de la paie
+RefPayment=Réf. Paiement
+Payslips=Bulletins de salaire
+
+# PayRun
+PayRun=Paie mensuelle
+PayRunCreated=Paie créée avec succès
+Period=Période
+TotalGross=Total brut
+TotalAdvances=Total avances
+TotalDeductions=Total déductions
+TotalBonuses=Total primes
+TotalNet=Total net à payer
+GeneratePayslips=Générer les bulletins
+GenerateRefreshPayslips=Générer/Actualiser bulletins
+PayslipsGenerated=Bulletins générés
+ValidatePayRun=Valider la paie
+ConfirmValidatePayRun=Confirmer la validation de cette paie ?
+PayRunValidated=Paie validée avec succès
+PayRunReopened=Paie remise en brouillon
+DeletePayRun=Supprimer la paie
+ConfirmDeleteObject=Voulez-vous vraiment supprimer ce cycle de paie ?
+Reopen=Remettre en brouillon
+ConfirmReopenPayRun=Voulez-vous vraiment remettre ce cycle de paie en brouillon ? Cela va supprimer les écritures comptables générées lors de la validation.
+NoPayslipsYet=Aucun bulletin généré
+PayrollSummary=État global de la paie
+FileGenerated=Fichier généré avec succès
+ErrorFileGeneration=Erreur lors de la génération du fichier
+GeneratePDF=Générer le bulletin (PDF)
+GenerateGlobalPDF=Générer l'état global (PDF)
+DownloadGlobalPDF=Télécharger l'état global (PDF)
+GlobalReport=État Global
+GlobalPayrollReport=État Global de la Paie
+GeneratedOn=Généré le
+
+# Payslip
+Payslip=Bulletin de salaire
+BaseSalary=Salaire de base
+Advances=Avances
+Deductions=Déductions
+Bonuses=Primes et gratification
+NetSalary=Net à payer
+Employee=Employé
+SalaryDetails=Détails du salaire
+SalaryExpense=Salaires de base
+AdvancesAccount=Compte avances
+AdvanceRecovery=Récupération avance
+NetPayable=Rémunérations dues
+PayrollJournal=Journal de paie
+SalaryPayment=Paiement du salaire
+RecordPayment=Enregistrer paiement
+ConfirmRecordPayment=Voulez-vous vraiment enregistrer le paiement pour l'ensemble des bulletins de cette paie ? Cela va créer des écritures bancaires et comptables pour chaque employé.
+PaymentRecorded=Paiement enregistré
+PaymentRecordedSuccess=Nombre de paiements enregistrés
+BankAccount=Compte bancaire
+PaymentMode=Mode de règlement
+PaymentSettings=Modes de paiement
+DefaultBankAccount=Compte bancaire par défaut
+DefaultPaymentMethod=Mode de règlement par défaut
+PaymentSettingsSaved=Paramètres de paiement enregistrés
+
+# Status
+Draft=Brouillon
+Validated=Validé
+Paid=Payé
+
+# Accounting
+PayrollSettings=Configuration du module Paie
+BankAndPayment=Banque et paiement
+AccountingAccounts=Comptes comptables
+DefaultBankAccount=Compte bancaire par défaut
+DefaultPaymentMethod=Mode de règlement par défaut
+PAYROLL_ACCOUNT_SALARY_EXPENSE=Compte charge de salaires
+PAYROLL_ACCOUNT_BONUSES=Compte primes et gratifications
+PAYROLL_ACCOUNT_NET_PAYABLE=Compte net à payer
+PAYROLL_ACCOUNT_ADVANCES=Compte avances sur salaires
+PAYROLL_JOURNAL=Code journal de paie
+PAYROLL_BANK_JOURNAL=Code journal de trésorerie
+
+# Errors
+ErrorFieldRequired=Le champ %s est obligatoire
+NoRecordFound=Aucun enregistrement trouvé
+
+# ============================================================================
+# langs/en_US/payroll.lang - English translations
+# ============================================================================
+
+CHARSET=UTF-8
+
+# Module
+Module900000Name=Payroll
+Module900000Desc=Monthly payroll management
+
+# Permissions
+Permission900001=Read pay runs
+Permission900002=Create/modify pay runs
+Permission900003=Validate pay runs
+Permission900004=Delete pay runs
+Permission900005=Read payslips
+Permission900006=Create/modify payslips
+Permission900007=Read own payslips only
+Permission900008=Generate accounting entries
+Permission900009=Record payments
+
+# Menu
+Payroll=Payroll
+PayRuns=Pay Runs
+Advances=Advances
+ListOfAdvances=List of advances
+NewPayRun=New Pay Run
+PayrollSummary=Global Payroll Summary
+RefPayment=Payment Ref.
+Payslips=Payslips
+
+# PayRun
+PayRun=Pay Run
+PayRunCreated=Pay run created successfully
+Period=Period
+TotalGross=Total gross
+TotalAdvances=Total advances
+TotalDeductions=Total deductions
+TotalBonuses=Total bonuses
+TotalNet=Total net payable
+GeneratePayslips=Generate Payslips
+GenerateRefreshPayslips=Generate/Refresh Payslips
+PayslipsGenerated=Payslips generated
+ValidatePayRun=Validate pay run
+ConfirmValidatePayRun=Confirm validation of this pay run?
+PayRunValidated=Pay run validated successfully
+PayRunReopened=Pay run reopened to draft
+DeletePayRun=Delete pay run
+ConfirmDeleteObject=Do you really want to delete this pay run?
+Reopen=Reopen to draft
+ConfirmReopenPayRun=Do you really want to reopen this pay run to draft? This will delete the accounting entries generated during validation.
+NoPayslipsYet=No payslips generated yet
+PayrollSummary=Global Payroll Summary
+FileGenerated=File generated successfully
+ErrorFileGeneration=Error generating file
+GeneratePDF=Generate Payslip (PDF)
+GenerateGlobalPDF=Generate Global Report (PDF)
+DownloadGlobalPDF=Download Global Report (PDF)
+GlobalReport=Global Report
+GlobalPayrollReport=Global Payroll Report
+GeneratedOn=Generated on
+
+
+# Payslip
+Payslip=Payslip
+BaseSalary=Base salary
+Advances=Advances
+Deductions=Deductions
+Bonuses=Bonuses and Gratifications
+NetSalary=Net salary
+Employee=Employee
+SalaryDetails=Salary details
+SalaryExpense=Base Salary
+AdvancesAccount=Advances account
+AdvanceRecovery=Advance recovery
+NetPayable=Personnel - Net payable
+PayrollJournal=Payroll journal
+SalaryPayment=Salary payment
+RecordPayment=Record payment
+ConfirmRecordPayment=Do you really want to record payment for all the payslips in this payroll run? This will create bank and accounting entries for each employee.
+PaymentRecorded=Payment recorded
+PaymentRecordedSuccess=Number of payments recorded
+BankAccount=Bank account
+PaymentMode=Payment method
+PaymentSettings=Payment Settings
+DefaultBankAccount=Default bank account
+DefaultPaymentMethod=Default payment method
+PaymentSettingsSaved=Payment settings saved
+SettingsSaved=Enregistrer avec succès
+
+
+# Status
+Draft=Draft
+Validated=Validated
+Paid=Paid
+
+# Accounting
+PAYROLL_ACCOUNT_SALARY_EXPENSE=Salary expense account
+PAYROLL_ACCOUNT_NET_PAYABLE=Net payable account
+PAYROLL_ACCOUNT_ADVANCES=Salary advances account
+
+# Errors
+ErrorFieldRequired=Field %s is required
+NoRecordFound=No record found
+ErrorPayRunPeriodAlreadyExists=Une paie mensuelle existe déjà pour cette période (mois/année).
+ErrorPayRunLabelAlreadyExists=Une paie mensuelle existe déjà avec ce libellé.
+ErrorMissingBankOrPaymentMode=Tous les employés doivent être associés à un mode de règlement et un compte bancaire. Veuillez les ajouter avant de valider.
+
+#buttons
+ThisMonth=[Ce mois-ci]
