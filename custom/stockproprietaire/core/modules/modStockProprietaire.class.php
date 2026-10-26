@@ -58,7 +58,7 @@ class modStockProprietaire extends DolibarrModules
 		$this->name = preg_replace('/^mod/i', '', get_class($this));
 
 		$this->description = "Stock propriétaire : distingue la marchandise payée mais laissée au magasin par les clients";
-		$this->descriptionlong = "Affiche sur chaque fiche produit le stock physique, la quantité vendue mais pas encore récupérée par les clients (d'après les expéditions Faurex Magasin), et le stock qui appartient réellement au propriétaire.";
+		$this->descriptionlong = "Affiche le stock physique, la quantité vendue mais pas encore récupérée par les clients (d'après les expéditions Faurex Magasin), et le stock qui appartient réellement au propriétaire.";
 
 		// Auteur
 		$this->editor_name = 'Ets Haimidah';
@@ -159,24 +159,41 @@ class modStockProprietaire extends DolibarrModules
 		$r++;
 		/* END MODULEBUILDER PERMISSIONS */
 
-		// Menus : une entrée dans le menu de gauche de "Produits"
+		// Menus
 		$this->menu = array();
 		$r = 0;
 		/* BEGIN MODULEBUILDER LEFTMENU */
+		// Bouton "Stock" dans la barre du haut
 		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=products',
-			'type' => 'left',
-			'titre' => 'Stock propriétaire',
-			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
-			'mainmenu' => 'products',
-			'leftmenu' => 'stockproprietaire',
-			'url' => '/stockproprietaire/stockproprietaireindex.php',
+			'fk_menu' => '',
+			'type' => 'top',
+			'titre' => 'Stock',
+			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'stockproprietaire',
+			'leftmenu' => '',
+			'url' => '/stockproprietaire/stock.php',
 			'langs' => 'stockproprietaire@stockproprietaire',
 			'position' => 1000 + $r,
 			'enabled' => 'isModEnabled("stockproprietaire")',
 			'perms' => '$user->hasRight("stockproprietaire", "read")',
 			'target' => '',
 			'user' => 0,    // 0 = utilisateurs internes uniquement
+		);
+		// Entrée dans le menu de gauche de cette page
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=stockproprietaire',
+			'type' => 'left',
+			'titre' => 'Stock propriétaire',
+			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
+			'mainmenu' => 'stockproprietaire',
+			'leftmenu' => 'stockproprietaire_stock',
+			'url' => '/stockproprietaire/stock.php',
+			'langs' => 'stockproprietaire@stockproprietaire',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("stockproprietaire")',
+			'perms' => '$user->hasRight("stockproprietaire", "read")',
+			'target' => '',
+			'user' => 0,
 		);
 		/* END MODULEBUILDER LEFTMENU */
 	}
