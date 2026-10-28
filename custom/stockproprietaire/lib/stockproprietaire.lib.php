@@ -47,9 +47,10 @@ function stockproprietaireAdminPrepareHead()
  * Partie commune des requêtes : expéditions Faurex non terminées
  * et quantités déjà livrées par ligne de facture.
  *
- * @return string  Morceau de SQL (FROM ... WHERE ...)
+ * @param  string $extrajoin  Jointures supplémentaires (produit, client...)
+ * @return string             Morceau de SQL (FROM ... WHERE ...)
  */
-function stockproprietaire_sql_base()
+function stockproprietaire_sql_base($extrajoin = '')
 {
 	$sql = " FROM ".MAIN_DB_PREFIX."faurex_shipment AS s";
 	$sql .= " INNER JOIN ".MAIN_DB_PREFIX."facture AS f ON f.rowid = s.fk_facture";
@@ -57,6 +58,7 @@ function stockproprietaire_sql_base()
 	$sql .= " LEFT JOIN (SELECT fk_facturedet, SUM(qty_delivered) AS livre";
 	$sql .= "   FROM ".MAIN_DB_PREFIX."faurex_shipment_line GROUP BY fk_facturedet) AS d";
 	$sql .= "   ON d.fk_facturedet = fd.rowid";
+	$sql .= $extrajoin;
 	$sql .= " WHERE s.status IN (0, 1)";          // Expéditions non terminées (Validé, Partiel)
 	$sql .= " AND f.fk_statut IN (1, 2)";         // Factures validées ou payées
 	$sql .= " AND f.type = 0";                    // Factures standard (pas les avoirs)
@@ -98,6 +100,33 @@ function stockproprietaire_get_non_recupere($db, $fk_product = 0, $fk_soc = 0)
 }
 
 /**
+ * Liste des clients qui ont encore de la marchandise au magasin.
+ *
+ * @param  DoliDB $db  Connexion à la base
+ * @return array<int,object>  Lignes : rowid, nom, town, reste
+ */
+function stockproprietaire_get_clients_en_attente($db)
+{
+	$sql = "SELECT so.rowid, so.nom, so.town,";
+	$sql .= " SUM(GREATEST(fd.qty - COALESCE(d.livre, 0), 0)) AS reste";
+	$sql .= stockproprietaire_sql_base(" INNER JOIN ".MAIN_DB_PREFIX."societe AS so ON so.rowid = f.fk_soc");
+	$sql .= " GROUP BY so.rowid, so.nom, so.town";
+	$sql .= " HAVING reste > 0";
+	$sql .= " ORDER BY so.nom, so.rowid";
+
+	$rows = array();
+	$resql = $db->query($sql);
+	if ($resql) {
+		while ($obj = $db->fetch_object($resql)) {
+			$rows[] = $obj;
+		}
+	} else {
+		dol_syslog(__FUNCTION__." Erreur SQL : ".$db->lasterror(), LOG_ERR);
+	}
+	return $rows;
+}
+
+/**
  * Détail par facture de ce qu'un client a encore au magasin.
  *
  * @param  DoliDB $db      Connexion à la base
@@ -110,15 +139,9 @@ function stockproprietaire_get_detail_client($db, $fk_soc)
 	$sql .= " p.rowid AS pid, p.ref AS pref, p.label AS plabel,";
 	$sql .= " fd.qty, COALESCE(d.livre, 0) AS livre,";
 	$sql .= " GREATEST(fd.qty - COALESCE(d.livre, 0), 0) AS reste";
-	$sql .= stockproprietaire_sql_base();
+	$sql .= stockproprietaire_sql_base(" INNER JOIN ".MAIN_DB_PREFIX."product AS p ON p.rowid = fd.fk_product");
 	$sql .= " AND f.fk_soc = ".((int) $fk_soc);
 	$sql .= " AND fd.qty - COALESCE(d.livre, 0) > 0";
-	// On ajoute la jointure avec la table des produits pour avoir la référence et le libellé
-	$sql = str_replace(
-		"INNER JOIN ".MAIN_DB_PREFIX."facturedet AS fd ON fd.fk_facture = f.rowid",
-		"INNER JOIN ".MAIN_DB_PREFIX."facturedet AS fd ON fd.fk_facture = f.rowid INNER JOIN ".MAIN_DB_PREFIX."product AS p ON p.rowid = fd.fk_product",
-		$sql
-	);
 	$sql .= " ORDER BY f.datef DESC, f.ref, p.ref";
 
 	$rows = array();

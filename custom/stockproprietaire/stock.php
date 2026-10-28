@@ -28,7 +28,7 @@ if (!$res) {
 	die("Include of main fails");
 }
 
-require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
+require_once DOL_DOCUMENT_ROOT.'/core/lib/ajax.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 dol_include_once('/stockproprietaire/lib/stockproprietaire.lib.php');
 
@@ -42,7 +42,6 @@ if (!isModEnabled('stockproprietaire') || !$user->hasRight('stockproprietaire', 
 // Filtre client
 $socid = GETPOSTINT('socid');
 
-$form = new Form($db);
 $productstatic = new Product($db);
 
 
@@ -68,6 +67,7 @@ if ($resql) {
 
 $nonrecupAll    = stockproprietaire_get_non_recupere($db);
 $nonrecupClient = ($socid > 0) ? stockproprietaire_get_non_recupere($db, 0, $socid) : array();
+$clients        = stockproprietaire_get_clients_en_attente($db);
 
 
 /*
@@ -78,16 +78,29 @@ llxHeader('', 'Stock', '', '', 0, 0, '', '', '', 'mod-stockproprietaire page-sto
 
 print load_fiche_titre('Stock physique et stock propriétaire', '', 'fa-warehouse');
 
-// Formulaire de filtre
+// Formulaire de filtre : seulement les clients qui ont de la marchandise au magasin
 print '<form method="GET" action="'.$_SERVER['PHP_SELF'].'">';
 print '<div class="divsearchfield">';
 print '<span class="paddingright">Client :</span>';
-print $form->select_company($socid, 'socid', '', 'Tous les clients', 0, 0, array(), 0, 'minwidth300');
+print '<select name="socid" id="socid" class="minwidth400">';
+print '<option value="0">Tous les clients</option>';
+foreach ($clients as $c) {
+	$label = $c->nom.' (n°'.$c->rowid.')';
+	if (!empty($c->town)) {
+		$label .= ' - '.$c->town;
+	}
+	$label .= ' : '.stockproprietaire_qty($c->reste).' unités au magasin';
+	$selected = ((int) $c->rowid === (int) $socid) ? ' selected' : '';
+	print '<option value="'.((int) $c->rowid).'"'.$selected.'>'.dol_escape_htmltag($label).'</option>';
+}
+print '</select>';
+print ajax_combobox('socid');
 print ' <input type="submit" class="button small" value="Filtrer">';
 if ($socid > 0) {
 	print ' <a class="paddingleft" href="'.$_SERVER['PHP_SELF'].'">Voir tous les clients</a>';
 }
 print '</div>';
+print '<div class="opacitymedium paddingtop">'.count($clients).' client(s) ont de la marchandise au magasin.</div>';
 print '</form>';
 print '<br>';
 
