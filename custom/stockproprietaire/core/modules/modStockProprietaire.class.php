@@ -74,7 +74,7 @@ class modStockProprietaire extends DolibarrModules
 
 		// Fonctionnalités du module
 		$this->module_parts = array(
-			'triggers' => 0,
+			'triggers' => 1,
 			'login' => 0,
 			'substitutions' => 0,
 			'menus' => 0,
