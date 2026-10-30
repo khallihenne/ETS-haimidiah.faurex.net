@@ -131,11 +131,12 @@ function stockproprietaire_get_clients_en_attente($db)
  *
  * @param  DoliDB $db      Connexion à la base
  * @param  int    $fk_soc  Id du client
- * @return array<int,object>  Lignes : facid, facref, datef, pid, pref, plabel, qty, livre, reste
+ * @return array<int,object>  Lignes : shipid, shipstatus, fdid, facid, facref, datef, pid, pref, plabel, qty, livre, reste
  */
 function stockproprietaire_get_detail_client($db, $fk_soc)
 {
-	$sql = "SELECT f.rowid AS facid, f.ref AS facref, f.datef,";
+	$sql = "SELECT s.rowid AS shipid, s.status AS shipstatus, fd.rowid AS fdid,";
+	$sql .= " f.rowid AS facid, f.ref AS facref, f.datef,";
 	$sql .= " p.rowid AS pid, p.ref AS pref, p.label AS plabel,";
 	$sql .= " fd.qty, COALESCE(d.livre, 0) AS livre,";
 	$sql .= " GREATEST(fd.qty - COALESCE(d.livre, 0), 0) AS reste";

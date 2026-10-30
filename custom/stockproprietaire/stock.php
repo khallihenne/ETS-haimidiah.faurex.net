@@ -10,7 +10,8 @@
 /**
  * \file    stockproprietaire/stock.php
  * \ingroup stockproprietaire
- * \brief   Page "Stock" : stock physique et stock propriétaire, filtrable par client
+ * \brief   Page "Stock" : stock physique et stock propriétaire, filtre par client,
+ *          et saisie des livraisons (le client récupère une partie de sa marchandise).
  */
 
 // Chargement de l'environnement Dolibarr
@@ -39,10 +40,66 @@ if (!isModEnabled('stockproprietaire') || !$user->hasRight('stockproprietaire', 
 	accessforbidden();
 }
 
-// Filtre client
-$socid = GETPOSTINT('socid');
+$socid        = GETPOSTINT('socid');
+$action       = GETPOST('action', 'aZ09');
+$candeliver   = !empty($user->rights->faurex_magasin->shipment->write);
+$fk_warehouse = GETPOSTINT('fk_warehouse');
 
 $productstatic = new Product($db);
+
+
+/*
+ * Actions : enregistrer une livraison
+ */
+
+if ($action == 'deliver' && $socid > 0) {
+	if (!$candeliver) {
+		setEventMessages("Vous n'avez pas le droit d'enregistrer une livraison.", null, 'errors');
+	} else {
+		$fdid = GETPOSTINT('deliver_line');
+		$qtys = GETPOST('qty', 'array');
+		$qty  = isset($qtys[$fdid]) ? (float) price2num($qtys[$fdid]) : 0;
+
+		// On retrouve la ligne parmi celles du client (vérifie qu'elle lui appartient bien)
+		$line = null;
+		foreach (stockproprietaire_get_detail_client($db, $socid) as $row) {
+			if ((int) $row->fdid === $fdid) {
+				$line = $row;
+				break;
+			}
+		}
+
+		if (!$line) {
+			setEventMessages("Ligne introuvable pour ce client.", null, 'errors');
+		} elseif ($fk_warehouse <= 0) {
+			setEventMessages("Choisissez l'entrepôt de sortie.", null, 'errors');
+		} else {
+			dol_include_once('/faurex_magasin/class/faurexshipment.class.php');
+			$ship = new FaurexShipment($db);
+			if ($ship->fetch($line->shipid) <= 0) {
+				setEventMessages("Expédition introuvable.", null, 'errors');
+			} else {
+				// Fonction de Faurex Magasin : ligne de livraison + sortie de stock + statut
+				$r = $ship->addLine($line->fdid, $line->pid, $line->qty, $qty, dol_now(), '', '', $user, $fk_warehouse);
+				if ($r > 0) {
+					setEventMessages("Livraison enregistrée : ".stockproprietaire_qty($qty)." x ".$line->pref." (".$line->facref.").", null, 'mesgs');
+				} elseif ($r == -3) {
+					setEventMessages("La quantité doit être supérieure à 0.", null, 'errors');
+				} elseif ($r == -4) {
+					setEventMessages("La quantité dépasse le reste au magasin (".stockproprietaire_qty($line->reste).").", null, 'errors');
+				} elseif ($r == -2) {
+					setEventMessages("Cette expédition est déjà entièrement livrée.", null, 'errors');
+				} else {
+					setEventMessages("Erreur lors de l'enregistrement de la livraison.", null, 'errors');
+				}
+			}
+		}
+	}
+
+	// On recharge la page pour afficher les chiffres à jour
+	header('Location: '.$_SERVER['PHP_SELF'].'?socid='.$socid.'&fk_warehouse='.$fk_warehouse);
+	exit;
+}
 
 
 /*
@@ -63,6 +120,22 @@ if ($resql) {
 	}
 } else {
 	dol_print_error($db);
+}
+
+// Entrepôts (pour la sortie de stock)
+$warehouses = array();
+$sql = "SELECT e.rowid, e.ref, e.lieu";
+$sql .= " FROM ".MAIN_DB_PREFIX."entrepot AS e";
+$sql .= " WHERE e.entity IN (".getEntity('stock').")";
+$sql .= " ORDER BY e.rowid";
+$resql = $db->query($sql);
+if ($resql) {
+	while ($obj = $db->fetch_object($resql)) {
+		$warehouses[] = $obj;
+	}
+}
+if ($fk_warehouse <= 0 && !empty($warehouses)) {
+	$fk_warehouse = (int) $warehouses[0]->rowid;   // Premier entrepôt par défaut (Magasin-Capital)
 }
 
 $nonrecupAll    = stockproprietaire_get_non_recupere($db);
@@ -176,12 +249,29 @@ if ($nbLignes == 0) {
 print '</table>';
 print '</div>';
 
-// Détail par facture pour le client choisi
+// Détail par facture pour le client choisi, avec saisie des livraisons
 if ($socid > 0) {
 	$rows = stockproprietaire_get_detail_client($db, $socid);
 
 	print '<br>';
 	print load_fiche_titre('Détail par facture : marchandise de ce client encore au magasin', '', 'bill');
+
+	print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
+	print '<input type="hidden" name="token" value="'.newToken().'">';
+	print '<input type="hidden" name="action" value="deliver">';
+	print '<input type="hidden" name="socid" value="'.((int) $socid).'">';
+
+	if ($candeliver && !empty($rows)) {
+		print '<div class="paddingbottom">';
+		print '<span class="paddingright">Entrepôt de sortie :</span>';
+		print '<select name="fk_warehouse" class="minwidth200">';
+		foreach ($warehouses as $w) {
+			$selected = ((int) $w->rowid === (int) $fk_warehouse) ? ' selected' : '';
+			print '<option value="'.((int) $w->rowid).'"'.$selected.'>'.dol_escape_htmltag($w->ref.($w->lieu ? ' - '.$w->lieu : '')).'</option>';
+		}
+		print '</select>';
+		print '</div>';
+	}
 
 	print '<div class="div-table-responsive">';
 	print '<table class="noborder centpercent">';
@@ -189,26 +279,43 @@ if ($socid > 0) {
 	print '<th>Facture</th>';
 	print '<th class="center">Date</th>';
 	print '<th>Produit</th>';
+	print '<th class="center">État</th>';
 	print '<th class="right">Facturé</th>';
 	print '<th class="right">Déjà livré</th>';
 	print '<th class="right">Reste au magasin</th>';
+	if ($candeliver) {
+		print '<th class="center">Le client récupère</th>';
+	}
 	print '</tr>';
 
+	$colspan = $candeliver ? 8 : 7;
 	if (empty($rows)) {
-		print '<tr><td colspan="6"><span class="opacitymedium">Aucune facture en attente.</span></td></tr>';
+		print '<tr><td colspan="'.$colspan.'"><span class="opacitymedium">Aucune facture en attente.</span></td></tr>';
 	}
 	foreach ($rows as $row) {
+		$statusLabel = ((int) $row->shipstatus === 1) ? 'Partiel' : 'Validé';
+		$statusClass = ((int) $row->shipstatus === 1) ? 'badge-status1' : 'badge-status4';
+
 		print '<tr class="oddeven">';
 		print '<td><a href="'.DOL_URL_ROOT.'/compta/facture/card.php?facid='.((int) $row->facid).'">'.img_picto('', 'bill', 'class="pictofixedwidth"').dol_escape_htmltag($row->facref).'</a></td>';
 		print '<td class="center">'.dol_print_date($db->jdate($row->datef), 'day').'</td>';
 		print '<td>'.dol_escape_htmltag($row->pref).' <span class="opacitymedium">'.dol_escape_htmltag($row->plabel).'</span></td>';
+		print '<td class="center"><span class="badge '.$statusClass.'">'.$statusLabel.'</span></td>';
 		print '<td class="right">'.stockproprietaire_qty($row->qty).'</td>';
 		print '<td class="right">'.stockproprietaire_qty($row->livre).'</td>';
 		print '<td class="right"><strong>'.stockproprietaire_qty($row->reste).'</strong></td>';
+		if ($candeliver) {
+			print '<td class="center nowraponall">';
+			print '<input type="number" name="qty['.((int) $row->fdid).']" value="'.((float) $row->reste).'" min="0" max="'.((float) $row->reste).'" step="any" class="width75 right"> ';
+			print '<button type="submit" name="deliver_line" value="'.((int) $row->fdid).'" class="button smallpaddingimp"';
+			print ' onclick="return confirm(\'Enregistrer cette livraison ?\');">Livrer</button>';
+			print '</td>';
+		}
 		print '</tr>';
 	}
 	print '</table>';
 	print '</div>';
+	print '</form>';
 }
 
 llxFooter();
