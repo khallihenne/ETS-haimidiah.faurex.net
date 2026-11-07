@@ -71,8 +71,9 @@ if ($action === 'savelines' && !empty($user->rights->faurex_magasin->shipment->w
                 if (!$fl) continue;
                 $r = $ship->addLine($fl->id, $fl->fk_product, $fl->qty, $q, $dship, '', '', $user, $fk_warehouse);
                 if ($r > 0) $nbAdded++;
-                elseif ($r == -4) $errors[] = 'Quantité supérieure au reste pour le produit '.$fl->fk_product;
-                elseif ($r == -3) $errors[] = 'Quantité invalide pour produit '.$fl->fk_product;
+                elseif ($r == -4) $errors[] = 'Quantité supérieure au reste pour le produit ID '.$fl->fk_product;
+                elseif ($r == -3) $errors[] = 'Quantité invalide pour le produit ID '.$fl->fk_product;
+                elseif ($r == -5) $errors[] = 'Stock insuffisant dans l\'entrepôt pour le produit ID '.$fl->fk_product;
             }
         }
         if ($nbAdded > 0) setEventMessages($nbAdded.' ligne(s) ajoutée(s)', null, 'mesgs');
@@ -103,7 +104,8 @@ if ($action === 'updateline' && $lineid > 0 && !empty($user->rights->faurex_maga
     if ($r > 0) setEventMessages('Ligne modifiée', null, 'mesgs');
     elseif ($r == -4) setEventMessages('Quantité supérieure au reste autorisé', null, 'errors');
     elseif ($r == -3) setEventMessages('Quantité invalide', null, 'errors');
-    else setEventMessages('Erreur', null, 'errors');
+    elseif ($r == -5) setEventMessages('Stock insuffisant dans l\'entrepôt', null, 'errors');
+    else setEventMessages('Erreur lors de la modification', null, 'errors');
     header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
     exit;
 }
@@ -142,7 +144,6 @@ print '</div></div>';
 
 $canAdd = ($ship->status != FaurexShipment::STATUS_DELIVERED) && !empty($user->rights->faurex_magasin->shipment->write);
 
-// Pré-charger remaining + produits en 2 requêtes au lieu de N
 $deliveredByLine = $ship->getDeliveredByLine();
 $prodCache = array();
 $prodIds = array();
@@ -176,7 +177,7 @@ foreach ($facture->lines as $fl) {
     if (empty($fl->fk_product)) continue;
     $prod = isset($prodCache[(int)$fl->fk_product]) ? $prodCache[(int)$fl->fk_product] : (object)array('ref'=>'?', 'label'=>'');
     $delivered = isset($deliveredByLine[(int)$fl->id]) ? $deliveredByLine[(int)$fl->id] : 0;
-    $remaining = (float)$fl->qty - $delivered;
+    $remaining = (float)$fl->qty - (float)$delivered;
     print '<tr>';
     print '<td><strong>'.dol_escape_htmltag($prod->ref).'</strong><br><span style="color:#6b7280;font-size:13px;">'.dol_escape_htmltag($prod->label).'</span></td>';
     print '<td class="right">'.$fl->qty.'</td>';
@@ -216,7 +217,6 @@ if ($canAdd) {
     print '<br><div style="text-align:center;"><button form="savelinesform" class="fx-btn fx-btn-success" type="submit" onclick="return faurexValidate(this)">➕ Ajouter les lignes</button></div>';
     print '<script>
 function faurexValidate(btn){
-    var f = document.getElementById("savelinesform");
     var wh = document.querySelector("[name=fk_warehouse]");
     if (!wh || !wh.value || wh.value == "-1" || wh.value == "0") {
         alert("⚠ Vous devez sélectionner un entrepôt avant d\'ajouter des lignes.");

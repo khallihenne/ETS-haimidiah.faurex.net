@@ -91,7 +91,7 @@ class FaurexShipment
     }
 
     /**
-     * Ajoute une ligne d'expédition
+     * Ajoute une ligne d'expédition (avec contrôle de stock disponible)
      */
     public function addLine($fk_facturedet, $fk_product, $qty_invoiced, $qty_delivered, $date_shipment, $mode_reglement, $account_credit, $user, $fk_warehouse = 0)
     {
@@ -102,6 +102,20 @@ class FaurexShipment
 
         $remaining = $this->getRemainingForLine($fk_facturedet, $qty_invoiced);
         if ($qty_delivered > $remaining) return -4;
+
+        // --- DÉBUT BLOCAGE STOCK NÉGATIF (POINTS 1 & 3) ---
+        if ($fk_product && $fk_warehouse) {
+            $sql_stock = "SELECT reel FROM ".MAIN_DB_PREFIX."product_stock WHERE fk_product = ".(int)$fk_product." AND fk_entrepot = ".(int)$fk_warehouse;
+            $res_stock = $this->db->query($sql_stock);
+            $stock_reel = 0;
+            if ($res_stock && $obj_stock = $this->db->fetch_object($res_stock)) {
+                $stock_reel = (float)$obj_stock->reel;
+            }
+            if ($qty_delivered > $stock_reel) {
+                return -5; // Stock insuffisant dans l'entrepôt sélectionné
+            }
+        }
+        // --- FIN BLOCAGE STOCK NÉGATIF ---
 
         $sql = "INSERT INTO ".MAIN_DB_PREFIX."faurex_shipment_line (fk_shipment, fk_facturedet, fk_product, qty_invoiced, qty_delivered, fk_warehouse, date_shipment, mode_reglement, account_credit, date_creation, fk_user_creat) VALUES (".
             (int)$this->id.",".
@@ -115,9 +129,10 @@ class FaurexShipment
             "'".$this->db->escape($account_credit)."',".
             "'".$this->db->idate(dol_now())."',".
             (int)$user->id.")";
+
         if (!$this->db->query($sql)) {
             $err = $this->db->lasterror();
-if (stripos($err, 'fk_warehouse') !== false) {
+            if (stripos($err, 'fk_warehouse') !== false) {
                 $this->db->query("ALTER TABLE ".MAIN_DB_PREFIX."faurex_shipment_line ADD COLUMN fk_warehouse INT DEFAULT NULL");
                 if (!$this->db->query($sql)) return -1;
             } else {
@@ -148,7 +163,6 @@ if (stripos($err, 'fk_warehouse') !== false) {
 
     /**
      * Renvoie un tableau [fk_facturedet => qty_delivered_total] pour cette expédition.
-     * Permet d'éviter N requêtes dans la boucle d'affichage.
      */
     public function getDeliveredByLine()
     {
@@ -160,7 +174,7 @@ if (stripos($err, 'fk_warehouse') !== false) {
     }
 
     /**
-     * Synchronisation par lots : crée toutes les expéditions manquantes pour les factures clients validées en une seule requête.
+     * Synchronisation par lots
      */
     public static function syncFromValidatedInvoices($db, $user)
     {
@@ -177,14 +191,12 @@ if (stripos($err, 'fk_warehouse') !== false) {
         $sql = "SELECT COALESCE(SUM(qty_delivered),0) AS s FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE fk_shipment = ".(int)$this->id." AND fk_facturedet = ".(int)$fk_facturedet;
         $res = $this->db->query($sql);
         $obj = $this->db->fetch_object($res);
-        return (float)$qty_invoiced - (float)$obj->s;
+        $delivered = $obj ? (float)$obj->s : 0;
+        return max(0, (float)$qty_invoiced - $delivered);
     }
 
     /**
-     * Recalcule l'état: si totale qty_delivered par ligne == qty_invoiced pour toutes les lignes -> Livré
-     */
-    /**
-     * Recalcule l'état en 2 requêtes (lignes facture + agrégat livraisons), sans charger l'objet Facture.
+     * Recalcule l'état de l'expédition
      */
     public function updateStatus()
     {
@@ -212,7 +224,6 @@ if (stripos($err, 'fk_warehouse') !== false) {
     public function deleteLine($lineid, $user = null)
     {
         global $user;
-        // Récupérer ligne pour annuler le mouvement de stock
         $sql0 = "SELECT fk_product, fk_warehouse, qty_delivered FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE rowid = ".(int)$lineid." AND fk_shipment = ".(int)$this->id;
         $r0 = $this->db->query($sql0);
         $line = $r0 ? $this->db->fetch_object($r0) : null;
@@ -220,7 +231,6 @@ if (stripos($err, 'fk_warehouse') !== false) {
         $sql = "DELETE FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE rowid = ".(int)$lineid." AND fk_shipment = ".(int)$this->id;
         if (!$this->db->query($sql)) return -1;
 
-        // Réintégrer la qté en stock (entrée)
         if ($line && $line->fk_product && $line->fk_warehouse && $line->qty_delivered > 0) {
             $this->stockMove($user, $line->fk_product, $line->fk_warehouse, $line->qty_delivered, 0, 'Annulation expédition '.$this->ref);
         }
@@ -234,21 +244,37 @@ if (stripos($err, 'fk_warehouse') !== false) {
         global $user;
         $qty_delivered = (float)$qty_delivered;
         if ($qty_delivered <= 0) return -3;
+
         $sql = "SELECT fk_facturedet, fk_product, fk_warehouse, qty_invoiced, qty_delivered FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE rowid = ".(int)$lineid." AND fk_shipment = ".(int)$this->id;
         $res = $this->db->query($sql);
         if (!$res) return -1;
         $obj = $this->db->fetch_object($res);
         if (!$obj) return -1;
+
         $sql2 = "SELECT COALESCE(SUM(qty_delivered),0) AS s FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE fk_shipment = ".(int)$this->id." AND fk_facturedet = ".(int)$obj->fk_facturedet." AND rowid <> ".(int)$lineid;
         $r2 = $this->db->query($sql2);
         $o2 = $this->db->fetch_object($r2);
-        $remaining = (float)$obj->qty_invoiced - (float)$o2->s;
+        $other_delivered = $o2 ? (float)$o2->s : 0;
+        $remaining = (float)$obj->qty_invoiced - $other_delivered;
         if ($qty_delivered > $remaining) return -4;
+
+        $delta = $qty_delivered - (float)$obj->qty_delivered;
+
+        if ($delta > 0 && $obj->fk_product && $obj->fk_warehouse) {
+            $sql_stock = "SELECT reel FROM ".MAIN_DB_PREFIX."product_stock WHERE fk_product = ".(int)$obj->fk_product." AND fk_entrepot = ".(int)$obj->fk_warehouse;
+            $res_stock = $this->db->query($sql_stock);
+            $stock_reel = 0;
+            if ($res_stock && $obj_stock = $this->db->fetch_object($res_stock)) {
+                $stock_reel = (float)$obj_stock->reel;
+            }
+            if ($delta > $stock_reel) {
+                return -5;
+            }
+        }
+
         $sql3 = "UPDATE ".MAIN_DB_PREFIX."faurex_shipment_line SET qty_delivered = ".$qty_delivered." WHERE rowid = ".(int)$lineid;
         if (!$this->db->query($sql3)) return -1;
 
-        // Ajuster le stock : delta = nouvelle - ancienne ; si > 0 → sortie supplémentaire ; si < 0 → réintégration
-        $delta = $qty_delivered - (float)$obj->qty_delivered;
         if ($delta != 0 && $obj->fk_product && $obj->fk_warehouse) {
             if ($delta > 0) {
                 $this->stockMove($user, $obj->fk_product, $obj->fk_warehouse, $delta, 1, 'Modif expédition '.$this->ref);
@@ -261,10 +287,6 @@ if (stripos($err, 'fk_warehouse') !== false) {
         return 1;
     }
 
-    /**
-     * Annule toute l'expédition : supprime toutes les lignes (et restaure le stock).
-     * Statut repasse à "Validé".
-     */
     public function cancelAll($user = null)
     {
         global $user;

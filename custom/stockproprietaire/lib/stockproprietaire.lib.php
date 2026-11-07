@@ -54,15 +54,15 @@ function stockproprietaire_sql_base($extrajoin = '')
 {
 	$sql = " FROM ".MAIN_DB_PREFIX."faurex_shipment AS s";
 	$sql .= " INNER JOIN ".MAIN_DB_PREFIX."facture AS f ON f.rowid = s.fk_facture";
-	$sql .= " INNER JOIN ".MAIN_DB_PREFIX."facturedet AS fd ON fd.fk_facture = f.rowid";
+	$sql .= " LEFT JOIN ".MAIN_DB_PREFIX."facturedet AS fd ON fd.fk_facture = f.rowid";
 	$sql .= " LEFT JOIN (SELECT fk_facturedet, SUM(qty_delivered) AS livre";
 	$sql .= "   FROM ".MAIN_DB_PREFIX."faurex_shipment_line GROUP BY fk_facturedet) AS d";
 	$sql .= "   ON d.fk_facturedet = fd.rowid";
 	$sql .= $extrajoin;
-	$sql .= " WHERE s.status IN (0, 1)";          // Expéditions non terminées (Validé, Partiel)
+	$sql .= " WHERE (s.status IN (0, 1) OR s.status IS NULL OR (s.status = 2 AND f.fk_statut = 1))";          // Expéditions non terminées (Validé, Partiel)
 	$sql .= " AND f.fk_statut IN (1, 2)";         // Factures validées ou payées
 	$sql .= " AND f.type = 0";                    // Factures standard (pas les avoirs)
-	$sql .= " AND fd.product_type = 0";           // Produits uniquement (pas les services)
+	$sql .= " AND (fd.product_type = 0 OR fd.product_type IS NULL)";           // Produits uniquement (pas les services)
 	$sql .= " AND f.entity IN (".getEntity('invoice').")";
 	return $sql;
 }
@@ -111,7 +111,7 @@ function stockproprietaire_get_clients_en_attente($db)
 	$sql .= " SUM(GREATEST(fd.qty - COALESCE(d.livre, 0), 0)) AS reste";
 	$sql .= stockproprietaire_sql_base(" INNER JOIN ".MAIN_DB_PREFIX."societe AS so ON so.rowid = f.fk_soc");
 	$sql .= " GROUP BY so.rowid, so.nom, so.town";
-	$sql .= " HAVING reste > 0";
+	$sql .= " HAVING reste > 0 OR reste IS NULL";
 	$sql .= " ORDER BY so.nom, so.rowid";
 
 	$rows = array();
@@ -140,7 +140,7 @@ function stockproprietaire_get_detail_client($db, $fk_soc)
 	$sql .= " p.rowid AS pid, p.ref AS pref, p.label AS plabel,";
 	$sql .= " fd.qty, COALESCE(d.livre, 0) AS livre,";
 	$sql .= " GREATEST(fd.qty - COALESCE(d.livre, 0), 0) AS reste";
-	$sql .= stockproprietaire_sql_base(" INNER JOIN ".MAIN_DB_PREFIX."product AS p ON p.rowid = fd.fk_product");
+	$sql .= stockproprietaire_sql_base(" LEFT JOIN ".MAIN_DB_PREFIX."product AS p ON p.rowid = fd.fk_product");
 	$sql .= " AND f.fk_soc = ".((int) $fk_soc);
 	$sql .= " AND fd.qty - COALESCE(d.livre, 0) > 0";
 	$sql .= " ORDER BY f.datef DESC, f.ref, p.ref";
