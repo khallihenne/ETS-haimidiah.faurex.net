@@ -43,3 +43,23 @@ function faurex_info_item($label, $value)
         '<div class="fx-value">'.$value.'</div>'.
         '</div>';
 }
+
+/**
+ * Script JS : demande un motif obligatoire avant une suppression / annulation,
+ * puis redirige vers l'URL de l'action avec &motif=...
+ * A afficher une seule fois par page.
+ */
+function faurex_motif_js()
+{
+    return '<script>
+function faurexAskMotif(url, question) {
+    if (!confirm(question)) return false;
+    var m = prompt("Motif obligatoire (3 caractères minimum) :", "");
+    if (m === null) return false;
+    m = m.trim();
+    if (m.length < 3) { alert("Le motif est obligatoire (3 caractères minimum)."); return false; }
+    window.location.href = url + "&motif=" + encodeURIComponent(m);
+    return false;
+}
+</script>';
+}

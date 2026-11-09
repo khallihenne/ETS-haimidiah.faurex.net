@@ -12,6 +12,7 @@ for ($i = 0; $i < 5; $i++) {
 if (!$res) die("Include of main fails");
 
 require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/class/faurexshipment.class.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
@@ -27,6 +28,10 @@ $editid = GETPOST('editid', 'int');
 
 $ship = new FaurexShipment($db);
 if ($ship->fetch($id) <= 0) accessforbidden('Expédition introuvable');
+$ship->updateStatus(); // Corrige un éventuel statut faux
+
+// Droit de supprimer / annuler (vérification pour le magasinier)
+$canDelete = $user->hasRight('faurex_magasin', 'shipment', 'delete');
 
 $facture = new Facture($db);
 $facture->fetch($ship->fk_facture);
@@ -84,16 +89,20 @@ if ($action === 'savelines' && !empty($user->rights->faurex_magasin->shipment->w
     exit;
 }
 
-if ($action === 'cancelall' && !empty($user->rights->faurex_magasin->shipment->write)) {
-    $ship->cancelAll($user);
-    setEventMessages('Expédition annulée, stock restauré', null, 'mesgs');
-    header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
-    exit;
-}
-
-if ($action === 'deleteline' && $lineid > 0 && !empty($user->rights->faurex_magasin->shipment->write)) {
-    $ship->deleteLine($lineid, $user);
-    setEventMessages('Ligne supprimée', null, 'mesgs');
+if ($action === 'cancelall' || $action === 'deleteline') {
+    $motif = faurex_get_motif();
+    if (!$canDelete) {
+        setEventMessages('Vous n\'avez pas le droit de supprimer ou d\'annuler. Demandez à un responsable.', null, 'errors');
+    } elseif ($motif === '') {
+        setEventMessages('Le motif est obligatoire (3 caractères minimum).', null, 'errors');
+    } elseif ($action === 'cancelall') {
+        $ship->cancelAll($user, $motif);
+        setEventMessages('Expédition annulée, stock restauré (enregistré dans l\'historique)', null, 'mesgs');
+    } elseif ($lineid > 0) {
+        $r = $ship->deleteLine($lineid, $user, $motif);
+        if ($r > 0) setEventMessages('Ligne supprimée (enregistrée dans l\'historique)', null, 'mesgs');
+        else setEventMessages('Erreur lors de la suppression', null, 'errors');
+    }
     header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
     exit;
 }
@@ -110,16 +119,17 @@ if ($action === 'updateline' && $lineid > 0 && !empty($user->rights->faurex_maga
     exit;
 }
 
-require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 llxHeader(faurex_css_head(), 'Expédition '.$ship->ref);
+print faurex_motif_js();
 
 $form = new Form($db);
 
 $statusType = $ship->status == 2 ? 'done' : ($ship->status == 1 ? 'partial' : 'validated');
 $statusLbl = FaurexShipment::getStatusLabel($ship->status);
 $headerRight = '<a class="fx-btn fx-btn-secondary" href="shipment_list.php">← Retour</a>';
-if ($ship->status != FaurexShipment::STATUS_VALIDATED && !empty($user->rights->faurex_magasin->shipment->write)) {
-    $headerRight .= ' <a class="fx-btn fx-btn-danger" href="?id='.$id.'&action=cancelall&token='.newToken().'" onclick="return confirm(\'Annuler toute l\\\'expédition ? Les quantités livrées seront supprimées et le stock restauré.\');">Annuler l\'expédition</a>';
+if ($ship->status != FaurexShipment::STATUS_VALIDATED && $canDelete) {
+    $urlCancel = $_SERVER['PHP_SELF'].'?id='.$id.'&action=cancelall&token='.newToken();
+    $headerRight .= ' <a class="fx-btn fx-btn-danger" href="#" onclick="return faurexAskMotif(\''.dol_escape_js($urlCancel).'\', \'Annuler toute l\\\'expédition ? Les quantités livrées seront supprimées et le stock restauré.\');">Annuler l\'expédition</a>';
 }
 print faurex_page_header('Expédition '.$ship->ref, '🚚', 'Facture '.$facture->ref.' — '.$soc->nom, $headerRight);
 
@@ -267,7 +277,10 @@ foreach ($ship->lines as $line) {
         print '<td class="center">';
         if ($canAdd) {
             print '<a class="fx-action" href="?id='.$id.'&editid='.(int)$line->rowid.'" title="Modifier">✏️</a>';
-            print '<a class="fx-action danger" href="?id='.$id.'&action=deleteline&lineid='.(int)$line->rowid.'&token='.newToken().'" onclick="return confirm(\'Supprimer cette ligne ?\');" title="Supprimer">🗑</a>';
+            if ($canDelete) {
+                $urlDel = $_SERVER['PHP_SELF'].'?id='.$id.'&action=deleteline&lineid='.(int)$line->rowid.'&token='.newToken();
+                print '<a class="fx-action danger" href="#" onclick="return faurexAskMotif(\''.dol_escape_js($urlDel).'\', \'Supprimer cette ligne ? Le stock sera restauré.\');" title="Supprimer">🗑</a>';
+            }
         } else print '—';
         print '</td>';
     }

@@ -42,7 +42,7 @@ if (!isModEnabled('stockproprietaire') || !$user->hasRight('stockproprietaire', 
 
 $socid        = GETPOSTINT('socid');
 $action       = GETPOST('action', 'aZ09');
-$candeliver   = !empty($user->rights->faurex_magasin->shipment->write);
+$candeliver   = $user->hasRight('faurex_magasin', 'shipment', 'write');
 $fk_warehouse = GETPOSTINT('fk_warehouse');
 
 $productstatic = new Product($db);
@@ -76,8 +76,8 @@ if ($action == 'deliver' && $socid > 0) {
 		} else {
 			dol_include_once('/faurex_magasin/class/faurexshipment.class.php');
 			$ship = new FaurexShipment($db);
-			if ($ship->fetch($line->shipid) <= 0) {
-				setEventMessages("Expédition introuvable.", null, 'errors');
+			if (empty($line->shipid) || $ship->fetch($line->shipid) <= 0) {
+				setEventMessages("Expédition introuvable pour cette facture : ouvrez une fois la liste des expéditions (Produits > Expédition) pour la créer.", null, 'errors');
 			} else {
 				// Fonction de Faurex Magasin : ligne de livraison + sortie de stock + statut
 				$r = $ship->addLine($line->fdid, $line->pid, $line->qty, $qty, dol_now(), '', '', $user, $fk_warehouse);
@@ -89,6 +89,11 @@ if ($action == 'deliver' && $socid > 0) {
 					setEventMessages("La quantité dépasse le reste au magasin (".stockproprietaire_qty($line->reste).").", null, 'errors');
 				} elseif ($r == -2) {
 					setEventMessages("Cette expédition est déjà entièrement livrée.", null, 'errors');
+				} elseif ($r == -5) {
+					// Point 1 : livraison impossible si l'article n'est pas (assez) dans l'entrepôt choisi
+					dol_include_once('/faurex_magasin/lib/faurex_magasin.lib.php');
+					$dispo = faurex_get_warehouse_stock($db, $line->pid, $fk_warehouse);
+					setEventMessages("Livraison impossible : stock insuffisant dans l'entrepôt choisi pour ".$line->pref." (disponible : ".stockproprietaire_qty($dispo).", demandé : ".stockproprietaire_qty($qty)."). La vente reste enregistrée : choisissez un autre entrepôt ou livrez plus tard.", null, 'errors');
 				} else {
 					setEventMessages("Erreur lors de l'enregistrement de la livraison.", null, 'errors');
 				}
@@ -171,6 +176,9 @@ print ajax_combobox('socid');
 print ' <input type="submit" class="button small" value="Filtrer">';
 if ($socid > 0) {
 	print ' <a class="paddingleft" href="'.$_SERVER['PHP_SELF'].'">Voir tous les clients</a>';
+}
+if ($user->hasRight('faurex_magasin', 'shipment', 'read')) {
+	print ' <a class="paddingleft" href="'.dol_buildpath('/faurex_magasin/pending_shipments.php', 1).'">Liste des clients non livrés</a>';
 }
 print '</div>';
 print '<div class="opacitymedium paddingtop">'.count($clients).' client(s) ont de la marchandise au magasin.</div>';
@@ -293,8 +301,9 @@ if ($socid > 0) {
 		print '<tr><td colspan="'.$colspan.'"><span class="opacitymedium">Aucune facture en attente.</span></td></tr>';
 	}
 	foreach ($rows as $row) {
-		$statusLabel = ((int) $row->shipstatus === 1) ? 'Partiel' : 'Validé';
-		$statusClass = ((int) $row->shipstatus === 1) ? 'badge-status1' : 'badge-status4';
+		// État calculé d'après les quantités (pas d'après un statut qui pourrait être faux)
+		$statusLabel = ((float) $row->livre > 0) ? 'Partiel' : 'Non livré';
+		$statusClass = ((float) $row->livre > 0) ? 'badge-status1' : 'badge-status4';
 
 		print '<tr class="oddeven">';
 		print '<td><a href="'.DOL_URL_ROOT.'/compta/facture/card.php?facid='.((int) $row->facid).'">'.img_picto('', 'bill', 'class="pictofixedwidth"').dol_escape_htmltag($row->facref).'</a></td>';
@@ -306,8 +315,10 @@ if ($socid > 0) {
 		print '<td class="right"><strong>'.stockproprietaire_qty($row->reste).'</strong></td>';
 		if ($candeliver) {
 			print '<td class="center nowraponall">';
-			print '<input type="number" name="qty['.((int) $row->fdid).']" value="'.((float) $row->reste).'" min="0" max="'.((float) $row->reste).'" step="any" class="width75 right"> ';
-			print '<button type="submit" name="deliver_line" value="'.((int) $row->fdid).'" class="button smallpaddingimp"';
+			// La touche Entrée déclenche le bouton "Livrer" de CETTE ligne (et non celui de la 1re ligne)
+			print '<input type="number" name="qty['.((int) $row->fdid).']" value="'.((float) $row->reste).'" min="0" max="'.((float) $row->reste).'" step="any" class="width75 right"';
+			print ' onkeydown="if (event.key === \'Enter\') { event.preventDefault(); document.getElementById(\'deliver_btn_'.((int) $row->fdid).'\').click(); }"> ';
+			print '<button type="submit" id="deliver_btn_'.((int) $row->fdid).'" name="deliver_line" value="'.((int) $row->fdid).'" class="button smallpaddingimp"';
 			print ' onclick="return confirm(\'Enregistrer cette livraison ?\');">Livrer</button>';
 			print '</td>';
 		}

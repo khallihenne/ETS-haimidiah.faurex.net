@@ -3,6 +3,8 @@
  * Classe métier Faurex Shipment (Expédition liée à une facture client)
  */
 
+require_once __DIR__.'/../lib/faurex_magasin.lib.php';
+
 class FaurexShipment
 {
     public $db;
@@ -95,6 +97,8 @@ class FaurexShipment
      */
     public function addLine($fk_facturedet, $fk_product, $qty_invoiced, $qty_delivered, $date_shipment, $mode_reglement, $account_credit, $user, $fk_warehouse = 0)
     {
+        // Recalcule l'état avant de vérifier (corrige un statut "Livré" resté faux)
+        $this->updateStatus();
         if ($this->status == self::STATUS_DELIVERED) return -2;
 
         $qty_delivered = (float)$qty_delivered;
@@ -221,27 +225,46 @@ class FaurexShipment
         return $newStatus;
     }
 
-    public function deleteLine($lineid, $user = null)
+    /**
+     * Supprime une ligne d'expédition, remet la quantité en stock et l'enregistre dans l'historique.
+     *
+     * @param  int    $lineid
+     * @param  User   $user
+     * @param  string $motif   Motif de la suppression (historique)
+     * @param  string $action  Code historique (DELETE_LINE ou CANCEL_ALL)
+     * @return int    1 OK, -1 erreur
+     */
+    public function deleteLine($lineid, $user = null, $motif = '', $action = 'DELETE_LINE')
     {
-        global $user;
+        if (!is_object($user)) $user = $GLOBALS['user'];
+
         $sql0 = "SELECT fk_product, fk_warehouse, qty_delivered FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE rowid = ".(int)$lineid." AND fk_shipment = ".(int)$this->id;
         $r0 = $this->db->query($sql0);
         $line = $r0 ? $this->db->fetch_object($r0) : null;
+        if (!$line) return -1;
 
         $sql = "DELETE FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE rowid = ".(int)$lineid." AND fk_shipment = ".(int)$this->id;
         if (!$this->db->query($sql)) return -1;
 
-        if ($line && $line->fk_product && $line->fk_warehouse && $line->qty_delivered > 0) {
+        // Réintégrer la quantité en stock (entrée)
+        if ($line->fk_product && $line->fk_warehouse && $line->qty_delivered > 0) {
             $this->stockMove($user, $line->fk_product, $line->fk_warehouse, $line->qty_delivered, 0, 'Annulation expédition '.$this->ref);
         }
+
+        faurex_history_log($this->db, $user, 'shipment', $this->id, $this->ref, $action, $line->fk_product, $line->fk_warehouse, (float)$line->qty_delivered, 0, $motif);
 
         $this->updateStatus();
         return 1;
     }
 
+    /**
+     * Modifie la quantité livrée d'une ligne (avec contrôle du stock de l'entrepôt).
+     *
+     * @return int 1 OK, -1 erreur, -3 qté invalide, -4 dépasse le reste, -5 stock insuffisant
+     */
     public function updateLineQty($lineid, $qty_delivered, $user = null)
     {
-        global $user;
+        if (!is_object($user)) $user = $GLOBALS['user'];
         $qty_delivered = (float)$qty_delivered;
         if ($qty_delivered <= 0) return -3;
 
@@ -253,21 +276,17 @@ class FaurexShipment
 
         $sql2 = "SELECT COALESCE(SUM(qty_delivered),0) AS s FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE fk_shipment = ".(int)$this->id." AND fk_facturedet = ".(int)$obj->fk_facturedet." AND rowid <> ".(int)$lineid;
         $r2 = $this->db->query($sql2);
-        $o2 = $this->db->fetch_object($r2);
+        $o2 = $r2 ? $this->db->fetch_object($r2) : null;
         $other_delivered = $o2 ? (float)$o2->s : 0;
         $remaining = (float)$obj->qty_invoiced - $other_delivered;
         if ($qty_delivered > $remaining) return -4;
 
         $delta = $qty_delivered - (float)$obj->qty_delivered;
+        if ($delta == 0) return 1;
 
+        // Sortie supplémentaire : le stock de l'entrepôt doit suffire
         if ($delta > 0 && $obj->fk_product && $obj->fk_warehouse) {
-            $sql_stock = "SELECT reel FROM ".MAIN_DB_PREFIX."product_stock WHERE fk_product = ".(int)$obj->fk_product." AND fk_entrepot = ".(int)$obj->fk_warehouse;
-            $res_stock = $this->db->query($sql_stock);
-            $stock_reel = 0;
-            if ($res_stock && $obj_stock = $this->db->fetch_object($res_stock)) {
-                $stock_reel = (float)$obj_stock->reel;
-            }
-            if ($delta > $stock_reel) {
+            if ($delta > faurex_get_warehouse_stock($this->db, $obj->fk_product, $obj->fk_warehouse)) {
                 return -5;
             }
         }
@@ -275,7 +294,7 @@ class FaurexShipment
         $sql3 = "UPDATE ".MAIN_DB_PREFIX."faurex_shipment_line SET qty_delivered = ".$qty_delivered." WHERE rowid = ".(int)$lineid;
         if (!$this->db->query($sql3)) return -1;
 
-        if ($delta != 0 && $obj->fk_product && $obj->fk_warehouse) {
+        if ($obj->fk_product && $obj->fk_warehouse) {
             if ($delta > 0) {
                 $this->stockMove($user, $obj->fk_product, $obj->fk_warehouse, $delta, 1, 'Modif expédition '.$this->ref);
             } else {
@@ -283,24 +302,62 @@ class FaurexShipment
             }
         }
 
+        faurex_history_log($this->db, $user, 'shipment', $this->id, $this->ref, 'UPDATE_LINE', $obj->fk_product, $obj->fk_warehouse, (float)$obj->qty_delivered, $qty_delivered, '');
+
         $this->updateStatus();
         return 1;
     }
 
-    public function cancelAll($user = null)
+    /**
+     * Annule toute l'expédition : supprime toutes les lignes (et restaure le stock).
+     * Statut repasse à "Validé".
+     *
+     * @param  User   $user
+     * @param  string $motif  Motif de l'annulation (historique)
+     * @return int    1 OK
+     */
+    public function cancelAll($user = null, $motif = '')
     {
-        global $user;
-        $sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE fk_shipment = ".(int)$this->id;
-        $res = $this->db->query($sql);
+        if (!is_object($user)) $user = $GLOBALS['user'];
+
+        $ids = array();
+        $res = $this->db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."faurex_shipment_line WHERE fk_shipment = ".(int)$this->id);
         if ($res) {
-            while ($obj = $this->db->fetch_object($res)) {
-                $this->deleteLine($obj->rowid, $user);
-            }
+            while ($obj = $this->db->fetch_object($res)) $ids[] = (int)$obj->rowid;
         }
-        $sql2 = "UPDATE ".MAIN_DB_PREFIX."faurex_shipment SET status = ".self::STATUS_VALIDATED." WHERE rowid = ".(int)$this->id;
-        $this->db->query($sql2);
+        foreach ($ids as $lid) {
+            $this->deleteLine($lid, $user, $motif, 'CANCEL_ALL');
+        }
+        $this->db->query("UPDATE ".MAIN_DB_PREFIX."faurex_shipment SET status = ".self::STATUS_VALIDATED." WHERE rowid = ".(int)$this->id);
         $this->status = self::STATUS_VALIDATED;
         return 1;
+    }
+
+    /**
+     * Recalcule en une seule requête l'état de toutes les expéditions
+     * (même règle que updateStatus). Corrige les statuts "Livré" erronés.
+     *
+     * @param  DoliDB $db
+     * @return bool
+     */
+    public static function recalcAllStatuses($db)
+    {
+        $sql = "UPDATE ".MAIN_DB_PREFIX."faurex_shipment s".
+            " INNER JOIN (".
+            "   SELECT s2.rowid,".
+            "     SUM(CASE WHEN COALESCE(x.delivered,0) > 0 THEN 1 ELSE 0 END) AS nb_any,".
+            "     SUM(CASE WHEN COALESCE(x.delivered,0) < fd.qty THEN 1 ELSE 0 END) AS nb_notdone".
+            "   FROM ".MAIN_DB_PREFIX."faurex_shipment s2".
+            "   INNER JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_facture = s2.fk_facture AND fd.fk_product > 0".
+            "   LEFT JOIN (SELECT fk_shipment, fk_facturedet, SUM(qty_delivered) AS delivered".
+            "              FROM ".MAIN_DB_PREFIX."faurex_shipment_line GROUP BY fk_shipment, fk_facturedet) x".
+            "     ON x.fk_shipment = s2.rowid AND x.fk_facturedet = fd.rowid".
+            "   GROUP BY s2.rowid".
+            " ) a ON a.rowid = s.rowid".
+            " SET s.status = CASE WHEN a.nb_any > 0 AND a.nb_notdone = 0 THEN ".self::STATUS_DELIVERED.
+            "                     WHEN a.nb_any > 0 THEN ".self::STATUS_PARTIAL.
+            "                     ELSE ".self::STATUS_VALIDATED." END";
+        return $db->query($sql);
     }
 
     public function updatePlannedDate($date_planned)

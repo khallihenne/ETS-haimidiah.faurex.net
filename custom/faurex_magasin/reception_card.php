@@ -12,6 +12,7 @@ for ($i = 0; $i < 5; $i++) {
 if (!$res) die("Include of main fails");
 
 require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/class/faurexreception.class.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
@@ -27,6 +28,9 @@ $editid = GETPOST('editid', 'int');
 
 $rec = new FaurexReception($db);
 if ($rec->fetch($id) <= 0) accessforbidden('Réception introuvable');
+
+// Droit de supprimer / annuler (vérification pour le magasinier)
+$canDelete = $user->hasRight('faurex_magasin', 'reception', 'delete');
 
 $facture = new FactureFournisseur($db);
 $facture->fetch($rec->fk_facture_fourn);
@@ -83,16 +87,23 @@ if ($action === 'savelines' && !empty($user->rights->faurex_magasin->reception->
     exit;
 }
 
-if ($action === 'cancelall' && !empty($user->rights->faurex_magasin->reception->write)) {
-    $rec->cancelAll($user);
-    setEventMessages('Réception annulée, stock restauré', null, 'mesgs');
-    header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
-    exit;
-}
-
-if ($action === 'deleteline' && $lineid > 0 && !empty($user->rights->faurex_magasin->reception->write)) {
-    $rec->deleteLine($lineid, $user);
-    setEventMessages('Ligne supprimée', null, 'mesgs');
+if ($action === 'cancelall' || $action === 'deleteline') {
+    $motif = faurex_get_motif();
+    if (!$canDelete) {
+        setEventMessages('Vous n\'avez pas le droit de supprimer ou d\'annuler. Demandez à un responsable.', null, 'errors');
+    } elseif ($motif === '') {
+        setEventMessages('Le motif est obligatoire (3 caractères minimum).', null, 'errors');
+    } elseif ($action === 'cancelall') {
+        $r = $rec->cancelAll($user, $motif);
+        if ($r > 0) setEventMessages('Réception annulée, stock corrigé (enregistré dans l\'historique)', null, 'mesgs');
+        elseif ($r == -5) setEventMessages('Annulation impossible : le stock de l\'entrepôt deviendrait négatif (marchandise déjà sortie). Rien n\'a été modifié.', null, 'errors');
+        else setEventMessages('Erreur lors de l\'annulation', null, 'errors');
+    } elseif ($lineid > 0) {
+        $r = $rec->deleteLine($lineid, $user, $motif);
+        if ($r > 0) setEventMessages('Ligne supprimée (enregistrée dans l\'historique)', null, 'mesgs');
+        elseif ($r == -5) setEventMessages('Suppression impossible : le stock de l\'entrepôt deviendrait négatif (marchandise déjà sortie).', null, 'errors');
+        else setEventMessages('Erreur lors de la suppression', null, 'errors');
+    }
     header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
     exit;
 }
@@ -103,21 +114,23 @@ if ($action === 'updateline' && $lineid > 0 && !empty($user->rights->faurex_maga
     if ($r > 0) setEventMessages('Ligne modifiée', null, 'mesgs');
     elseif ($r == -4) setEventMessages('Quantité supérieure au reste autorisé', null, 'errors');
     elseif ($r == -3) setEventMessages('Quantité invalide', null, 'errors');
-    else setEventMessages('Erreur', null, 'errors');
+    elseif ($r == -5) setEventMessages('Réduction impossible : le stock de l\'entrepôt deviendrait négatif', null, 'errors');
+    else setEventMessages('Erreur lors de la modification', null, 'errors');
     header("Location: ".$_SERVER['PHP_SELF'].'?id='.$id);
     exit;
 }
 
-require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 llxHeader(faurex_css_head(), 'Réception '.$rec->ref);
+print faurex_motif_js();
 
 $form = new Form($db);
 
 $statusType = $rec->status == 2 ? 'done' : ($rec->status == 1 ? 'partial' : 'validated');
 $statusLbl = FaurexReception::getStatusLabel($rec->status);
 $headerRight = '<a class="fx-btn fx-btn-secondary" href="reception_list.php">← Retour</a>';
-if ($rec->status != FaurexReception::STATUS_VALIDATED && !empty($user->rights->faurex_magasin->reception->write)) {
-    $headerRight .= ' <a class="fx-btn fx-btn-danger" href="?id='.$id.'&action=cancelall&token='.newToken().'" onclick="return confirm(\'Annuler toute la réception ? Les quantités reçues seront supprimées et le stock corrigé.\');">Annuler la réception</a>';
+if ($rec->status != FaurexReception::STATUS_VALIDATED && $canDelete) {
+    $urlCancel = $_SERVER['PHP_SELF'].'?id='.$id.'&action=cancelall&token='.newToken();
+    $headerRight .= ' <a class="fx-btn fx-btn-danger" href="#" onclick="return faurexAskMotif(\''.dol_escape_js($urlCancel).'\', \'Annuler toute la réception ? Les quantités reçues seront retirées du stock.\');">Annuler la réception</a>';
 }
 print faurex_page_header('Réception '.$rec->ref, '📦', 'Facture '.$facture->ref.' — '.$soc->nom, $headerRight);
 
@@ -262,7 +275,10 @@ foreach ($rec->lines as $line) {
         print '<td class="center">';
         if ($canAdd) {
             print '<a class="fx-action" href="?id='.$id.'&editid='.(int)$line->rowid.'" title="Modifier">✏️</a>';
-            print '<a class="fx-action danger" href="?id='.$id.'&action=deleteline&lineid='.(int)$line->rowid.'&token='.newToken().'" onclick="return confirm(\'Supprimer cette ligne ?\');" title="Supprimer">🗑</a>';
+            if ($canDelete) {
+                $urlDel = $_SERVER['PHP_SELF'].'?id='.$id.'&action=deleteline&lineid='.(int)$line->rowid.'&token='.newToken();
+                print '<a class="fx-action danger" href="#" onclick="return faurexAskMotif(\''.dol_escape_js($urlDel).'\', \'Supprimer cette ligne ? La quantité sera retirée du stock.\');" title="Supprimer">🗑</a>';
+            }
         } else print '—';
         print '</td>';
     }

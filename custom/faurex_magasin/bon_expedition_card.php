@@ -34,19 +34,19 @@ $header = null; $lines = array();
 while ($obj = $db->fetch_object($resq)) { if ($header === null) $header = $obj; $lines[] = $obj; }
 if (!$header) accessforbidden('Aucune donnée');
 
-$bcRef = 'BC-'.$header->ship_ref.'-'.dol_print_date($db->jdate($date), '%Y%m%d');
+$bcRef = 'BL-'.$header->ship_ref.'-'.dol_print_date($db->jdate($date), '%Y%m%d');
 
-llxHeader(faurex_css_head(), 'Bon de commande '.$bcRef);
+llxHeader(faurex_css_head(), 'Bon de livraison '.$bcRef);
 
 $right = '<a class="fx-btn fx-btn-secondary" href="bon_expedition_list.php">← Retour</a> '.
     '<a class="fx-btn" href="javascript:window.print();">🖨 Imprimer</a>';
-print faurex_page_header($bcRef, '📄', 'Bon de commande - Expédition', $right);
+print faurex_page_header($bcRef, '📄', 'Bon de livraison - Expédition', $right);
 
 print '<div class="fx-card" style="max-width:900px;margin:auto;">';
 print '<div class="fx-card-body">';
 
 print '<div style="text-align:center;margin-bottom:24px;">';
-print '<h1 style="margin:0;color:#4f46e5;letter-spacing:2px;">BON DE COMMANDE</h1>';
+print '<h1 style="margin:0;color:#4f46e5;letter-spacing:2px;">BON DE LIVRAISON</h1>';
 print '<div style="color:#6b7280;margin-top:6px;font-size:14px;">'.dol_escape_htmltag($bcRef).'</div>';
 print '</div>';
 

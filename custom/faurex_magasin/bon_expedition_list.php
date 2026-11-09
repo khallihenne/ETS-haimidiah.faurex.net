@@ -12,9 +12,9 @@ require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 $langs->loadLangs(array("faurex_magasin@faurex_magasin", "bills", "companies"));
 if (empty($user->rights->faurex_magasin->shipment->read)) accessforbidden();
 
-llxHeader(faurex_css_head(), 'Bons de commande - Expéditions');
+llxHeader(faurex_css_head(), 'Bons de livraison - Expéditions');
 
-print faurex_page_header('Bons de commande', '📄', 'Documents générés à partir des expéditions livrées');
+print faurex_page_header('Bons de livraison', '📄', 'Documents générés à partir des expéditions livrées');
 
 $sql = "SELECT s.rowid AS ship_id, s.ref AS ship_ref, s.fk_facture, s.fk_soc, soc.nom AS socname, ".
     "sl.date_shipment, COUNT(*) AS nb_lines, SUM(sl.qty_delivered) AS total_qty ".
@@ -28,7 +28,7 @@ $resq = $db->query($sql);
 
 print '<table class="fx-table">';
 print '<thead><tr>';
-print '<th>Référence BC</th><th>Réf. expédition</th><th>Tiers</th><th>Date</th>';
+print '<th>Référence BL</th><th>Réf. expédition</th><th>Tiers</th><th>Date</th>';
 print '<th class="right">Lignes</th><th class="right">Qté totale</th><th class="center">État</th><th class="center">Action</th>';
 print '</tr></thead><tbody>';
 $count = 0;
@@ -36,7 +36,7 @@ if ($resq) while ($obj = $db->fetch_object($resq)) {
     $count++;
     $dateStr = $db->jdate($obj->date_shipment);
     $dateParam = $obj->date_shipment ? $obj->date_shipment : '0000-00-00';
-    $bcRef = 'BC-'.$obj->ship_ref.'-'.dol_print_date($dateStr, '%Y%m%d');
+    $bcRef = 'BL-'.$obj->ship_ref.'-'.dol_print_date($dateStr, '%Y%m%d');
     print '<tr>';
     print '<td><strong>'.dol_escape_htmltag($bcRef).'</strong></td>';
     print '<td><a href="shipment_card.php?id='.(int)$obj->ship_id.'">'.dol_escape_htmltag($obj->ship_ref).'</a></td>';
@@ -48,7 +48,7 @@ if ($resq) while ($obj = $db->fetch_object($resq)) {
     print '<td class="center"><a class="fx-action" href="bon_expedition_card.php?ship_id='.(int)$obj->ship_id.'&date='.urlencode($dateParam).'" title="Générer le bon">📄</a></td>';
     print '</tr>';
 }
-if ($count == 0) print '<tr><td colspan="8" class="fx-empty"><div class="fx-empty-icon">📄</div>Aucun bon de commande à afficher</td></tr>';
+if ($count == 0) print '<tr><td colspan="8" class="fx-empty"><div class="fx-empty-icon">📄</div>Aucun bon de livraison à afficher</td></tr>';
 print '</tbody></table>';
 
 llxFooter();

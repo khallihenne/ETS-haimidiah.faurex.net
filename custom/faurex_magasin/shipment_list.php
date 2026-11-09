@@ -18,6 +18,7 @@ $langs->loadLangs(array("faurex_magasin@faurex_magasin", "bills", "companies"));
 if (empty($user->rights->faurex_magasin->shipment->read)) accessforbidden();
 
 FaurexShipment::syncFromValidatedInvoices($db, $user);
+FaurexShipment::recalcAllStatuses($db); // Corrige les statuts faux (ex : "Livré" alors qu'il reste à livrer)
 
 // --- GESTION ET MÉMORISATION DES FILTRES (POINT 4) ---
 $search_ref    = GETPOST('search_ref', 'alpha');
@@ -115,7 +116,7 @@ if ($res) while ($obj = $db->fetch_object($res)) {
     $type = $obj->status == 2 ? 'done' : ($obj->status == 1 ? 'partial' : 'validated');
     $label = FaurexShipment::getStatusLabel($obj->status);
     print '<tr>';
-    print '<td><strong>'.dol_escape_htmltag($obj->ref).'</strong><br><span style="color:#6b7280;font-size:12px;">'.$obj->fref.'</span></td>';
+    print '<td><strong>'.dol_escape_htmltag($obj->ref).'</strong><br><span style="color:#6b7280;font-size:12px;">'.dol_escape_htmltag($obj->fref).'</span></td>';
     print '<td>'.dol_escape_htmltag($obj->socname).'</td>';
     print '<td>'.dol_print_date($db->jdate($obj->date_facture), 'day').'</td>';
     print '<td class="center">'.faurex_status_badge($label, $type).'</td>';

@@ -25,7 +25,7 @@ class modFaurexMagasin extends DolibarrModules
         $this->editor_name = 'Faurex';
         $this->editor_url = 'https://www.faurex.mr';
 
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->const_name = 'MAIN_MODULE_' . strtoupper($this->name);
         $this->picto = 'shipment';
 
@@ -71,6 +71,21 @@ class modFaurexMagasin extends DolibarrModules
         $this->rights[$r][4] = 'reception';
         $this->rights[$r][5] = 'write';
 
+        // Vérification avant suppression : seul un utilisateur avec ce droit peut supprimer / annuler
+        $r++;
+        $this->rights[$r][0] = $this->numero + $r;
+        $this->rights[$r][1] = 'Supprimer des lignes / annuler les expéditions (motif obligatoire)';
+        $this->rights[$r][3] = 0;
+        $this->rights[$r][4] = 'shipment';
+        $this->rights[$r][5] = 'delete';
+
+        $r++;
+        $this->rights[$r][0] = $this->numero + $r;
+        $this->rights[$r][1] = 'Supprimer des lignes / annuler les réceptions (motif obligatoire)';
+        $this->rights[$r][3] = 0;
+        $this->rights[$r][4] = 'reception';
+        $this->rights[$r][5] = 'delete';
+
         // Menus
         $this->menu = array();
         $r = 0;
@@ -111,11 +126,26 @@ class modFaurexMagasin extends DolibarrModules
         $this->menu[$r] = array(
             'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=faurex_shipment',
             'type' => 'left',
-            'titre' => 'Bon de livraison',
+            'titre' => 'Bons de livraison',
             'mainmenu' => 'products',
             'url' => '/custom/faurex_magasin/bon_expedition_list.php',
             'langs' => 'faurex_magasin@faurex_magasin',
             'position' => 202,
+            'enabled' => '$conf->faurexmagasin->enabled',
+            'perms' => '$user->rights->faurex_magasin->shipment->read',
+            'target' => '',
+            'user' => 2
+        );
+
+        $r++;
+        $this->menu[$r] = array(
+            'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=faurex_shipment',
+            'type' => 'left',
+            'titre' => 'Clients non livrés',
+            'mainmenu' => 'products',
+            'url' => '/custom/faurex_magasin/pending_shipments.php',
+            'langs' => 'faurex_magasin@faurex_magasin',
+            'position' => 203,
             'enabled' => '$conf->faurexmagasin->enabled',
             'perms' => '$user->rights->faurex_magasin->shipment->read',
             'target' => '',
@@ -158,13 +188,30 @@ class modFaurexMagasin extends DolibarrModules
         $this->menu[$r] = array(
             'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=faurex_reception',
             'type' => 'left',
-            'titre' => 'Bon de reception',
+            'titre' => 'Bons de réception',
             'mainmenu' => 'products',
             'url' => '/custom/faurex_magasin/bon_reception_list.php',
             'langs' => 'faurex_magasin@faurex_magasin',
             'position' => 212,
             'enabled' => '$conf->faurexmagasin->enabled',
             'perms' => '$user->rights->faurex_magasin->reception->read',
+            'target' => '',
+            'user' => 2
+        );
+
+        // Historique des suppressions / annulations / modifications
+        $r++;
+        $this->menu[$r] = array(
+            'fk_menu' => 'fk_mainmenu=products',
+            'type' => 'left',
+            'titre' => '<span class="fas fa-history paddingright"></span> Historique magasin',
+            'mainmenu' => 'products',
+            'leftmenu' => 'faurex_history',
+            'url' => '/custom/faurex_magasin/history_list.php',
+            'langs' => 'faurex_magasin@faurex_magasin',
+            'position' => 220,
+            'enabled' => '$conf->faurexmagasin->enabled',
+            'perms' => '$user->rights->faurex_magasin->shipment->read || $user->rights->faurex_magasin->reception->read',
             'target' => '',
             'user' => 2
         );

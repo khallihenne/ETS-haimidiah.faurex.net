@@ -3,6 +3,8 @@
  * Classe métier Faurex Reception (Réception liée à une facture fournisseur)
  */
 
+require_once __DIR__.'/../lib/faurex_magasin.lib.php';
+
 class FaurexReception
 {
     public $db;
@@ -178,45 +180,83 @@ class FaurexReception
         return $newStatus;
     }
 
-    public function deleteLine($lineid, $user = null)
+    /**
+     * Supprime une ligne de réception : retire la quantité du stock (sortie).
+     * Refusé si le stock de l'entrepôt deviendrait négatif.
+     *
+     * @param  int    $lineid
+     * @param  User   $user
+     * @param  string $motif   Motif de la suppression (historique)
+     * @param  string $action  Code historique (DELETE_LINE ou CANCEL_ALL)
+     * @return int    1 OK, -1 erreur, -5 stock insuffisant (stock négatif interdit)
+     */
+    public function deleteLine($lineid, $user = null, $motif = '', $action = 'DELETE_LINE')
     {
-        global $user;
+        if (!is_object($user)) $user = $GLOBALS['user'];
+
         $sql0 = "SELECT fk_product, fk_warehouse, qty_received FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE rowid = ".(int)$lineid." AND fk_reception = ".(int)$this->id;
         $r0 = $this->db->query($sql0);
         $line = $r0 ? $this->db->fetch_object($r0) : null;
+        if (!$line) return -1;
+
+        // Stock négatif interdit : la marchandise reçue doit encore être dans l'entrepôt
+        if ($line->fk_product && $line->fk_warehouse && $line->qty_received > 0) {
+            if ((float)$line->qty_received > faurex_get_warehouse_stock($this->db, $line->fk_product, $line->fk_warehouse)) {
+                return -5;
+            }
+        }
 
         $sql = "DELETE FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE rowid = ".(int)$lineid." AND fk_reception = ".(int)$this->id;
         if (!$this->db->query($sql)) return -1;
 
         // Annuler l'entrée de stock → sortie
-        if ($line && $line->fk_product && $line->fk_warehouse && $line->qty_received > 0) {
+        if ($line->fk_product && $line->fk_warehouse && $line->qty_received > 0) {
             $this->stockMove($user, $line->fk_product, $line->fk_warehouse, $line->qty_received, 1, 'Annulation réception '.$this->ref);
         }
+
+        faurex_history_log($this->db, $user, 'reception', $this->id, $this->ref, $action, $line->fk_product, $line->fk_warehouse, (float)$line->qty_received, 0, $motif);
 
         $this->updateStatus();
         return 1;
     }
 
+    /**
+     * Modifie la quantité reçue d'une ligne.
+     *
+     * @return int 1 OK, -1 erreur, -3 qté invalide, -4 dépasse le reste, -5 stock insuffisant
+     */
     public function updateLineQty($lineid, $qty_received, $user = null)
     {
-        global $user;
+        if (!is_object($user)) $user = $GLOBALS['user'];
         $qty_received = (float)$qty_received;
         if ($qty_received <= 0) return -3;
+
         $sql = "SELECT fk_facture_fourn_det, fk_product, fk_warehouse, qty_invoiced, qty_received FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE rowid = ".(int)$lineid." AND fk_reception = ".(int)$this->id;
         $res = $this->db->query($sql);
         if (!$res) return -1;
         $obj = $this->db->fetch_object($res);
         if (!$obj) return -1;
+
         $sql2 = "SELECT COALESCE(SUM(qty_received),0) AS s FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE fk_reception = ".(int)$this->id." AND fk_facture_fourn_det = ".(int)$obj->fk_facture_fourn_det." AND rowid <> ".(int)$lineid;
         $r2 = $this->db->query($sql2);
-        $o2 = $this->db->fetch_object($r2);
-        $remaining = (float)$obj->qty_invoiced - (float)$o2->s;
+        $o2 = $r2 ? $this->db->fetch_object($r2) : null;
+        $remaining = (float)$obj->qty_invoiced - ($o2 ? (float)$o2->s : 0);
         if ($qty_received > $remaining) return -4;
+
+        $delta = $qty_received - (float)$obj->qty_received;
+        if ($delta == 0) return 1;
+
+        // Réduction de la quantité reçue = sortie de stock : interdite si le stock deviendrait négatif
+        if ($delta < 0 && $obj->fk_product && $obj->fk_warehouse) {
+            if (-$delta > faurex_get_warehouse_stock($this->db, $obj->fk_product, $obj->fk_warehouse)) {
+                return -5;
+            }
+        }
+
         $sql3 = "UPDATE ".MAIN_DB_PREFIX."faurex_reception_line SET qty_received = ".$qty_received." WHERE rowid = ".(int)$lineid;
         if (!$this->db->query($sql3)) return -1;
 
-        $delta = $qty_received - (float)$obj->qty_received;
-        if ($delta != 0 && $obj->fk_product && $obj->fk_warehouse) {
+        if ($obj->fk_product && $obj->fk_warehouse) {
             if ($delta > 0) {
                 $this->stockMove($user, $obj->fk_product, $obj->fk_warehouse, $delta, 0, 'Modif réception '.$this->ref);
             } else {
@@ -224,22 +264,46 @@ class FaurexReception
             }
         }
 
+        faurex_history_log($this->db, $user, 'reception', $this->id, $this->ref, 'UPDATE_LINE', $obj->fk_product, $obj->fk_warehouse, (float)$obj->qty_received, $qty_received, '');
+
         $this->updateStatus();
         return 1;
     }
 
-    public function cancelAll($user = null)
+    /**
+     * Annule toute la réception. Vérifie d'abord que le stock de chaque entrepôt
+     * suffit pour TOUTES les lignes : sinon rien n'est supprimé.
+     *
+     * @param  User   $user
+     * @param  string $motif
+     * @return int    1 OK, -5 stock insuffisant (rien n'a été annulé)
+     */
+    public function cancelAll($user = null, $motif = '')
     {
-        global $user;
-        $sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE fk_reception = ".(int)$this->id;
-        $res = $this->db->query($sql);
+        if (!is_object($user)) $user = $GLOBALS['user'];
+
+        $ids = array();
+        $need = array(); // [fk_product][fk_warehouse] => quantité à retirer
+        $res = $this->db->query("SELECT rowid, fk_product, fk_warehouse, qty_received FROM ".MAIN_DB_PREFIX."faurex_reception_line WHERE fk_reception = ".(int)$this->id);
         if ($res) {
             while ($obj = $this->db->fetch_object($res)) {
-                $this->deleteLine($obj->rowid, $user);
+                $ids[] = (int)$obj->rowid;
+                if ($obj->fk_product && $obj->fk_warehouse && $obj->qty_received > 0) {
+                    $p = (int)$obj->fk_product; $w = (int)$obj->fk_warehouse;
+                    $need[$p][$w] = (isset($need[$p][$w]) ? $need[$p][$w] : 0) + (float)$obj->qty_received;
+                }
             }
         }
-        $sql2 = "UPDATE ".MAIN_DB_PREFIX."faurex_reception SET status = ".self::STATUS_VALIDATED." WHERE rowid = ".(int)$this->id;
-        $this->db->query($sql2);
+        foreach ($need as $p => $byWh) {
+            foreach ($byWh as $w => $q) {
+                if ($q > faurex_get_warehouse_stock($this->db, $p, $w)) return -5;
+            }
+        }
+
+        foreach ($ids as $lid) {
+            $this->deleteLine($lid, $user, $motif, 'CANCEL_ALL');
+        }
+        $this->db->query("UPDATE ".MAIN_DB_PREFIX."faurex_reception SET status = ".self::STATUS_VALIDATED." WHERE rowid = ".(int)$this->id);
         $this->status = self::STATUS_VALIDATED;
         return 1;
     }
