@@ -17,6 +17,7 @@ class FaurexShipment
     public $status; // 0=Validé, 1=Partiel, 2=Livré
     public $note;
     public $lines = array();
+    public $stockMoveNote = ''; // texte ajouté au libellé des mouvements de stock (ex : " - facture FV1588 supprimée")
 
     const STATUS_VALIDATED = 0;
     const STATUS_PARTIAL   = 1;
@@ -248,7 +249,7 @@ class FaurexShipment
 
         // Réintégrer la quantité en stock (entrée)
         if ($line->fk_product && $line->fk_warehouse && $line->qty_delivered > 0) {
-            $this->stockMove($user, $line->fk_product, $line->fk_warehouse, $line->qty_delivered, 0, 'Annulation expédition '.$this->ref);
+            $this->stockMove($user, $line->fk_product, $line->fk_warehouse, $line->qty_delivered, 0, 'Annulation expédition '.$this->ref.$this->stockMoveNote);
         }
 
         faurex_history_log($this->db, $user, 'shipment', $this->id, $this->ref, $action, $line->fk_product, $line->fk_warehouse, (float)$line->qty_delivered, 0, $motif);
@@ -334,30 +335,36 @@ class FaurexShipment
     }
 
     /**
-     * Recalcule en une seule requête l'état de toutes les expéditions
-     * (même règle que updateStatus). Corrige les statuts "Livré" erronés.
+     * Corrige les expéditions marquées "Livré" alors qu'il reste à livrer.
+     * Une requête rapide trouve les expéditions concernées, puis chacune est recalculée.
+     * (Les autres statuts sont déjà recalculés à chaque ouverture de fiche et à chaque livraison.)
      *
      * @param  DoliDB $db
-     * @return bool
+     * @return int    Nombre d'expéditions corrigées
      */
     public static function recalcAllStatuses($db)
     {
-        $sql = "UPDATE ".MAIN_DB_PREFIX."faurex_shipment s".
-            " INNER JOIN (".
-            "   SELECT s2.rowid,".
-            "     SUM(CASE WHEN COALESCE(x.delivered,0) > 0 THEN 1 ELSE 0 END) AS nb_any,".
-            "     SUM(CASE WHEN COALESCE(x.delivered,0) < fd.qty THEN 1 ELSE 0 END) AS nb_notdone".
-            "   FROM ".MAIN_DB_PREFIX."faurex_shipment s2".
-            "   INNER JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_facture = s2.fk_facture AND fd.fk_product > 0".
-            "   LEFT JOIN (SELECT fk_shipment, fk_facturedet, SUM(qty_delivered) AS delivered".
-            "              FROM ".MAIN_DB_PREFIX."faurex_shipment_line GROUP BY fk_shipment, fk_facturedet) x".
-            "     ON x.fk_shipment = s2.rowid AND x.fk_facturedet = fd.rowid".
-            "   GROUP BY s2.rowid".
-            " ) a ON a.rowid = s.rowid".
-            " SET s.status = CASE WHEN a.nb_any > 0 AND a.nb_notdone = 0 THEN ".self::STATUS_DELIVERED.
-            "                     WHEN a.nb_any > 0 THEN ".self::STATUS_PARTIAL.
-            "                     ELSE ".self::STATUS_VALIDATED." END";
-        return $db->query($sql);
+        $sql = "SELECT DISTINCT s.rowid".
+            " FROM ".MAIN_DB_PREFIX."faurex_shipment s".
+            " INNER JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_facture = s.fk_facture AND fd.fk_product > 0".
+            " LEFT JOIN (SELECT fk_facturedet, SUM(qty_delivered) AS livre".
+            "            FROM ".MAIN_DB_PREFIX."faurex_shipment_line GROUP BY fk_facturedet) d ON d.fk_facturedet = fd.rowid".
+            " WHERE s.status = ".self::STATUS_DELIVERED.
+            " AND fd.qty - COALESCE(d.livre, 0) > 0";
+        $res = $db->query($sql);
+        if (!$res) return 0;
+        $ids = array();
+        while ($obj = $db->fetch_object($res)) $ids[] = (int) $obj->rowid;
+
+        $nb = 0;
+        foreach ($ids as $id) {
+            $ship = new self($db);
+            if ($ship->fetch($id) > 0) {
+                $ship->updateStatus();
+                $nb++;
+            }
+        }
+        return $nb;
     }
 
     public function updatePlannedDate($date_planned)

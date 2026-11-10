@@ -16,8 +16,8 @@ require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_magasin.lib.ph
 
 $langs->loadLangs(array("faurex_magasin@faurex_magasin", "products", "stocks"));
 
-$canShip = $user->hasRight('faurex_magasin', 'shipment', 'read');
-$canRec  = $user->hasRight('faurex_magasin', 'reception', 'read');
+$canShip = !empty($user->rights->faurex_magasin->shipment->read);
+$canRec  = !empty($user->rights->faurex_magasin->reception->read);
 if (!$canShip && !$canRec) accessforbidden();
 
 faurex_history_ensure_table($db);

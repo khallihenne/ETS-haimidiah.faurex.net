@@ -29,6 +29,9 @@ class modFaurexMagasin extends DolibarrModules
         $this->const_name = 'MAIN_MODULE_' . strtoupper($this->name);
         $this->picto = 'shipment';
 
+        // Active les déclencheurs du module (création des bons, retour en stock à la suppression d'une facture)
+        $this->module_parts = array('triggers' => 1);
+
         $this->depends = array('modFacture', 'modFournisseur', 'modProduct');
         $this->requiredby = array();
         $this->conflictwith = array();

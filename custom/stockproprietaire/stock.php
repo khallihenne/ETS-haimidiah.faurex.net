@@ -42,7 +42,7 @@ if (!isModEnabled('stockproprietaire') || !$user->hasRight('stockproprietaire', 
 
 $socid        = GETPOSTINT('socid');
 $action       = GETPOST('action', 'aZ09');
-$candeliver   = $user->hasRight('faurex_magasin', 'shipment', 'write');
+$candeliver   = !empty($user->rights->faurex_magasin->shipment->write);
 $fk_warehouse = GETPOSTINT('fk_warehouse');
 
 $productstatic = new Product($db);
@@ -177,7 +177,7 @@ print ' <input type="submit" class="button small" value="Filtrer">';
 if ($socid > 0) {
 	print ' <a class="paddingleft" href="'.$_SERVER['PHP_SELF'].'">Voir tous les clients</a>';
 }
-if ($user->hasRight('faurex_magasin', 'shipment', 'read')) {
+if (!empty($user->rights->faurex_magasin->shipment->read)) {
 	print ' <a class="paddingleft" href="'.dol_buildpath('/faurex_magasin/pending_shipments.php', 1).'">Liste des clients non livrés</a>';
 }
 print '</div>';

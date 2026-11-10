@@ -21,7 +21,7 @@ require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/class/faurexshipment.clas
 require_once DOL_DOCUMENT_ROOT.'/custom/faurex_magasin/lib/faurex_ui.lib.php';
 
 $langs->loadLangs(array("faurex_magasin@faurex_magasin", "bills", "companies"));
-if (!$user->hasRight('faurex_magasin', 'shipment', 'read')) accessforbidden();
+if (empty($user->rights->faurex_magasin->shipment->read)) accessforbidden();
 
 // Crée les expéditions manquantes (anciennes factures) pour que le lien "Livrer" fonctionne
 FaurexShipment::syncFromValidatedInvoices($db, $user);

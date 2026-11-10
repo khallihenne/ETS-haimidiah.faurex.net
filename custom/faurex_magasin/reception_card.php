@@ -30,7 +30,7 @@ $rec = new FaurexReception($db);
 if ($rec->fetch($id) <= 0) accessforbidden('Réception introuvable');
 
 // Droit de supprimer / annuler (vérification pour le magasinier)
-$canDelete = $user->hasRight('faurex_magasin', 'reception', 'delete');
+$canDelete = !empty($user->rights->faurex_magasin->reception->delete);
 
 $facture = new FactureFournisseur($db);
 $facture->fetch($rec->fk_facture_fourn);

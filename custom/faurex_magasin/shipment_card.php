@@ -31,7 +31,7 @@ if ($ship->fetch($id) <= 0) accessforbidden('Expédition introuvable');
 $ship->updateStatus(); // Corrige un éventuel statut faux
 
 // Droit de supprimer / annuler (vérification pour le magasinier)
-$canDelete = $user->hasRight('faurex_magasin', 'shipment', 'delete');
+$canDelete = !empty($user->rights->faurex_magasin->shipment->delete);
 
 $facture = new Facture($db);
 $facture->fetch($ship->fk_facture);
